@@ -1,0 +1,248 @@
+{
+  "info": {
+    "name": "Week 7 E-commerce API",
+    "description": "Register a customer, browse the seeded catalog, add a product to the cart, check out, and create an idempotent pending payment. No real payment is captured.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "{{email}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{password}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": "ChangeThis-Local-Password-123"
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "cartItemId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Register customer",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\":\"{{$guid}}@example.com\",\"password\":\"{{password}}\",\"fullName\":\"Demo Customer\"}"
+        },
+        "url": "{{baseUrl}}/api/users/register"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Customer registered', function () { pm.response.to.have.status(201); });",
+              "pm.collectionVariables.set('email', pm.response.json().email);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public catalog",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/api/categories"
+          }
+        },
+        {
+          "name": "Browse catalog and select sample product",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/api/products?page=0&size=20&sort=name,asc"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Catalog loaded', function () { pm.response.to.have.status(200); });",
+                  "const product = pm.response.json().content.find(item => item.sku === 'BOOK-001');",
+                  "pm.expect(product, 'seeded sample product').to.exist;",
+                  "pm.collectionVariables.set('productId', product.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get current customer profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shopping cart",
+      "item": [
+        {
+          "name": "View cart",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/cart"
+          }
+        },
+        {
+          "name": "Add sample product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"productId\":{{productId}},\"quantity\":1}"
+            },
+            "url": "{{baseUrl}}/api/cart/items"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Item added to cart', function () { pm.response.to.have.status(200); });",
+                  "pm.collectionVariables.set('cartItemId', pm.response.json().items[0].id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Orders and payments",
+      "item": [
+        {
+          "name": "Checkout cart",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/checkout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Order created', function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders?page=0&size=20"
+          }
+        },
+        {
+          "name": "Initiate pending payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"method\":\"CARD_PROVIDER\",\"idempotencyKey\":\"{{$guid}}-ecommerce-demo\"}"
+            },
+            "url": "{{baseUrl}}/api/orders/{{orderId}}/payments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pending payment intent created', function () { pm.response.to.have.status(201); });",
+                  "pm.expect(pm.response.json().status).to.eql('PENDING');",
+                  "pm.collectionVariables.set('paymentId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get payment",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}"
+          }
+        },
+        {
+          "name": "Cancel unpaid order and restore inventory",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{orderId}}/cancel"
+          }
+        }
+      ]
+    }
+  ]
+}
